@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>아이콘 생성</title></head>
+<body>
+<p>아이콘을 생성 중입니다... 자동으로 다운로드됩니다.</p>
+<script>
+function makeIcon(size) {
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const ctx = c.getContext('2d');
+  // Background
+  ctx.fillStyle = '#0071e3';
+  ctx.beginPath();
+  ctx.roundRect(0, 0, size, size, size * 0.2);
+  ctx.fill();
+  // Timer circle
+  const cx = size/2, cy = size/2, r = size*0.32;
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = size*0.04;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI*2);
+  ctx.stroke();
+  // Clock hands
+  ctx.lineCap = 'round';
+  ctx.lineWidth = size*0.035;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx, cy - r*0.65);
+  ctx.stroke();
+  ctx.lineWidth = size*0.03;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + r*0.45, cy + r*0.2);
+  ctx.stroke();
+  // Top button
+  ctx.lineWidth = size*0.04;
+  ctx.beginPath();
+  ctx.moveTo(cx - size*0.06, cy - r - size*0.04);
+  ctx.lineTo(cx + size*0.06, cy - r - size*0.04);
+  ctx.stroke();
+  return c;
+}
+[192, 512].forEach(size => {
+  const c = makeIcon(size);
+  const a = document.createElement('a');
+  a.download = 'icon-' + size + '.png';
+  a.href = c.toDataURL('image/png');
+  a.click();
+});
+document.body.innerHTML = '<p>icon-192.png, icon-512.png 다운로드 완료! claude_work 폴더에 넣어주세요.</p>';
+</script>
+</body>
+</html>

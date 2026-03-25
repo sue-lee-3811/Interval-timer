@@ -1,0 +1,1250 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0071e3">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>인터벌 타이머</title>
+<style>
+  :root {
+    --bg: #f5f5f7; --surface: #ffffff; --surface-hover: #f0f0f2;
+    --text: #1d1d1f; --text-secondary: #6e6e73;
+    --accent: #0071e3; --accent-hover: #0077ed;
+    --danger: #ff3b30; --success: #34c759; --warning: #ff9f0a;
+    --border: #d2d2d7; --shadow: 0 2px 12px rgba(0,0,0,0.08);
+    --radius: 12px; --radius-sm: 8px; --transition: 0.2s ease;
+    --step-active: #0071e3; --step-done: #34c759; --step-pending: #d2d2d7;
+    --group-accent: #5856d6; --group-bg: rgba(88,86,214,0.06);
+  }
+  .dark {
+    --bg: #1c1c1e; --surface: #2c2c2e; --surface-hover: #3a3a3c;
+    --text: #f5f5f7; --text-secondary: #98989d;
+    --accent: #0a84ff; --accent-hover: #409cff;
+    --border: #48484a; --shadow: 0 2px 12px rgba(0,0,0,0.3);
+    --step-active: #0a84ff; --step-done: #30d158; --step-pending: #48484a;
+    --group-accent: #7d7aff; --group-bg: rgba(125,122,255,0.1);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+    transition: background var(--transition), color var(--transition);
+  }
+  .container {
+    width: 100%; max-width: 540px; padding: 24px 20px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  header { display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+  #themeToggle {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 50%; width: 40px; height: 40px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem; color: var(--text); transition: background var(--transition);
+  }
+  #themeToggle:hover { background: var(--surface-hover); }
+  .card {
+    background: var(--surface); border-radius: var(--radius);
+    padding: 20px; box-shadow: var(--shadow); transition: background var(--transition);
+  }
+
+  /* ── Running mode: hide settings, enlarge timer ── */
+  body.is-running .interval-section { display: none; }
+  body.is-running .countdown-display { padding: 48px 20px 40px; }
+  body.is-running .countdown-time { font-size: 6rem; }
+  @media (min-width: 600px) {
+    body.is-running .countdown-time { font-size: 8rem; }
+  }
+  @media (max-width: 420px) {
+    body.is-running .countdown-time { font-size: 4.5rem; }
+  }
+
+  /* ── Countdown ── */
+  .countdown-display { text-align: center; padding: 28px 20px 20px; }
+  .countdown-time {
+    font-size: 4.5rem; font-weight: 700; font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em; line-height: 1; margin-bottom: 10px;
+  }
+  .step-indicator { font-size: 0.95rem; color: var(--text-secondary); font-weight: 500; margin-bottom: 6px; }
+  .step-indicator .hl { color: var(--accent); font-weight: 700; }
+  .cycle-count { font-size: 0.9rem; color: var(--text-secondary); font-weight: 500; }
+  .cycle-count span { color: var(--accent); font-weight: 700; font-size: 1.05rem; }
+  .step-progress { display: flex; gap: 3px; padding: 0 4px; margin-top: 14px; }
+  .step-dot {
+    flex: 1; height: 6px; border-radius: 3px; min-width: 3px;
+    background: var(--step-pending); transition: background 0.3s ease;
+  }
+  .step-dot.done { background: var(--step-done); }
+  .step-dot.active { background: var(--step-active); animation: dotPulse 1.2s ease-in-out infinite; }
+  @keyframes dotPulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+
+  /* ── Interval Section ── */
+  .interval-section h2 {
+    font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-secondary); margin-bottom: 12px; font-weight: 600;
+  }
+  .item-list {
+    display: flex; flex-direction: column; gap: 8px;
+    margin-bottom: 14px; max-height: 360px; overflow-y: auto;
+  }
+  .empty-msg { text-align: center; padding: 20px; color: var(--text-secondary); font-size: 0.9rem; }
+
+  /* ── Single interval item ── */
+  .item-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px; background: var(--bg);
+    border-radius: var(--radius-sm); border: 1px solid var(--border);
+    transition: all var(--transition);
+  }
+  .item-row.is-active { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0,113,227,0.2); }
+  .dark .item-row.is-active { box-shadow: 0 0 0 2px rgba(10,132,255,0.25); }
+  .item-row .item-check {
+    width: 18px; height: 18px; accent-color: var(--group-accent);
+    cursor: pointer; flex-shrink: 0;
+  }
+  .item-row .item-num {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--border); color: var(--text-secondary);
+    font-size: 0.75rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .item-row.is-active .item-num { background: var(--accent); color: #fff; }
+  .item-row .item-info { flex: 1; min-width: 0; }
+  .item-row .item-name {
+    font-size: 0.95rem; font-weight: 600; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .item-row .item-name-input {
+    width: 100%; border: none; border-bottom: 1px solid var(--accent);
+    background: transparent; color: var(--text);
+    font-size: 0.95rem; font-weight: 600; padding: 0; outline: none;
+  }
+  .item-row .item-time {
+    font-size: 0.8rem; color: var(--text-secondary); font-weight: 500;
+  }
+  .item-row .item-time-only { flex: 1; font-size: 0.95rem; font-weight: 600; color: var(--text); }
+  .item-row .delete-btn {
+    background: none; border: none; color: var(--text-secondary);
+    cursor: pointer; font-size: 1.1rem; padding: 2px 4px;
+    border-radius: 4px; transition: all var(--transition); flex-shrink: 0;
+  }
+  .item-row .delete-btn:hover { color: var(--danger); background: rgba(255,59,48,0.1); }
+
+  /* ── Group ── */
+  .group-block {
+    border: 2px solid var(--group-accent); border-radius: var(--radius);
+    overflow: hidden; transition: all var(--transition);
+  }
+  .group-block.is-active { box-shadow: 0 0 0 2px rgba(88,86,214,0.25); }
+  .group-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; background: var(--group-bg);
+    border-bottom: 1px solid var(--group-accent);
+  }
+  .group-header .group-check {
+    width: 18px; height: 18px; accent-color: var(--group-accent);
+    cursor: pointer; flex-shrink: 0;
+  }
+  .group-header .group-label {
+    flex: 1; font-size: 0.85rem; font-weight: 600; color: var(--group-accent);
+  }
+  .group-repeat {
+    display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+  }
+  .group-repeat button {
+    width: 24px; height: 24px; border: 1px solid var(--group-accent);
+    border-radius: 5px; background: transparent; color: var(--group-accent);
+    font-size: 0.9rem; font-weight: 600; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all var(--transition); padding: 0;
+  }
+  .group-repeat button:hover { background: var(--group-accent); color: #fff; }
+  .group-repeat .grp-val {
+    min-width: 24px; text-align: center;
+    font-size: 0.85rem; font-weight: 700; color: var(--group-accent);
+  }
+  .group-header .ungroup-btn {
+    background: none; border: 1px solid var(--border); color: var(--text-secondary);
+    font-size: 0.75rem; padding: 3px 8px; border-radius: 4px;
+    cursor: pointer; transition: all var(--transition); flex-shrink: 0;
+  }
+  .group-header .ungroup-btn:hover { color: var(--danger); border-color: var(--danger); }
+  .group-children {
+    display: flex; flex-direction: column; gap: 0;
+  }
+  .group-children .item-row {
+    border: none; border-radius: 0; border-bottom: 1px solid var(--border);
+    margin: 0;
+  }
+  .group-children .item-row:last-child { border-bottom: none; }
+
+  /* ── Selection bar ── */
+  .selection-bar {
+    display: none; padding: 10px; background: var(--group-bg);
+    border-radius: var(--radius-sm); border: 1px dashed var(--group-accent);
+    text-align: center;
+  }
+  .selection-bar.visible { display: flex; align-items: center; justify-content: center; gap: 10px; }
+  .selection-bar span { font-size: 0.85rem; color: var(--group-accent); font-weight: 500; }
+  .selection-bar .group-btn {
+    padding: 6px 14px; background: var(--group-accent); color: #fff;
+    border: none; border-radius: 6px; font-size: 0.85rem; font-weight: 600;
+    cursor: pointer; transition: opacity var(--transition);
+  }
+  .selection-bar .group-btn:hover { opacity: 0.85; }
+
+  /* ── Add Section ── */
+  .add-section { margin-bottom: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .add-name-row { display: flex; gap: 6px; }
+  .add-name-row input {
+    flex: 1; padding: 8px 12px; border: 2px solid var(--border);
+    border-radius: var(--radius-sm); background: var(--bg); color: var(--text);
+    font-size: 0.9rem; font-weight: 500; outline: none;
+    transition: border-color var(--transition);
+  }
+  .add-name-row input:focus { border-color: var(--accent); }
+  .add-row { display: flex; gap: 6px; align-items: center; }
+  .add-row .time-field { display: flex; align-items: center; gap: 2px; flex: 1; }
+  .add-row input {
+    width: 100%; text-align: center; font-size: 1.1rem; font-weight: 600;
+    padding: 10px 4px; border: 2px solid var(--border);
+    border-radius: var(--radius-sm); background: var(--bg); color: var(--text);
+    transition: border-color var(--transition); outline: none;
+  }
+  .add-row input:focus { border-color: var(--accent); }
+  .add-row .field-label {
+    font-size: 0.75rem; color: var(--text-secondary); font-weight: 500;
+    margin-left: 2px; flex-shrink: 0;
+  }
+  .add-btn {
+    padding: 10px 16px; background: var(--accent); color: #fff;
+    border: none; border-radius: var(--radius-sm);
+    font-size: 0.95rem; font-weight: 600; cursor: pointer;
+    transition: background var(--transition); flex-shrink: 0; white-space: nowrap;
+  }
+  .add-btn:hover { background: var(--accent-hover); }
+  .presets-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .preset-btn {
+    flex: 1; min-width: calc(33.33% - 5px); padding: 8px 6px;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--bg); color: var(--text);
+    font-size: 0.82rem; font-weight: 500; cursor: pointer;
+    transition: all var(--transition);
+  }
+  .preset-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* ── Global Repeat ── */
+  .repeat-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 0 0; border-top: 1px solid var(--border); margin-top: 6px; gap: 10px;
+  }
+  .repeat-row .repeat-label { font-size: 0.9rem; color: var(--text-secondary); font-weight: 500; }
+  .repeat-controls { display: flex; align-items: center; gap: 6px; }
+  .repeat-controls button {
+    width: 30px; height: 30px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--bg); color: var(--text);
+    font-size: 1.1rem; font-weight: 600; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all var(--transition);
+  }
+  .repeat-controls button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .repeat-controls button:disabled { opacity: 0.3; cursor: not-allowed; }
+  .repeat-controls .repeat-value {
+    min-width: 40px; text-align: center; font-size: 0.95rem; font-weight: 600; color: var(--text);
+  }
+  .repeat-controls .repeat-value .inf { font-size: 1.2rem; }
+
+  /* ── Controls ── */
+  .controls { display: flex; gap: 10px; }
+  .btn {
+    flex: 1; padding: 15px; border: none; border-radius: var(--radius-sm);
+    font-size: 1rem; font-weight: 600; cursor: pointer; transition: all var(--transition);
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-pause { background: var(--warning); color: #fff; }
+  .btn-pause:hover { opacity: 0.9; }
+  .btn-secondary { background: var(--surface-hover); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: var(--border); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  .ending-warn { animation: warnPulse 1.2s ease-in-out infinite; }
+  @keyframes warnPulse {
+    0%, 100% { background: var(--bg); }
+    50% { background: rgba(255,59,48,0.1); }
+  }
+  .dark .ending-warn { animation-name: warnPulseDark; }
+  @keyframes warnPulseDark {
+    0%, 100% { background: var(--bg); }
+    50% { background: rgba(255,59,48,0.15); }
+  }
+  .status-bar { text-align: center; font-size: 0.85rem; color: var(--text-secondary); font-weight: 500; }
+  .status-bar .running { color: var(--success); }
+  .status-bar .paused { color: var(--warning); }
+
+  /* ── Clear all button ── */
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .section-header h2 { margin-bottom: 0; }
+  .clear-all-btn {
+    background: none; border: 1px solid var(--border); color: var(--text-secondary);
+    font-size: 0.75rem; padding: 4px 10px; border-radius: 5px;
+    cursor: pointer; transition: all var(--transition);
+  }
+  .clear-all-btn:hover { color: var(--danger); border-color: var(--danger); }
+
+  /* ── Tab bar ── */
+  .tab-bar {
+    display: flex; gap: 0; border-radius: var(--radius-sm); overflow: hidden;
+    border: 1px solid var(--border); margin-bottom: 16px;
+  }
+  body.is-running .tab-bar { display: none; }
+  .tab-btn {
+    flex: 1; padding: 10px 0; border: none; background: var(--bg);
+    color: var(--text-secondary); font-size: 0.9rem; font-weight: 600;
+    cursor: pointer; transition: all var(--transition);
+    text-align: center;
+  }
+  .tab-btn + .tab-btn { border-left: 1px solid var(--border); }
+  .tab-btn.active { background: var(--accent); color: #fff; }
+
+  /* ── Panel visibility ── */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* ── Saved presets ── */
+  body.is-running .saved-section { display: none; }
+  .saved-section h2 {
+    font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-secondary); margin-bottom: 12px; font-weight: 600;
+  }
+  .save-current-row {
+    display: flex; gap: 6px; margin-bottom: 12px;
+  }
+  .save-current-row input {
+    flex: 1; padding: 8px 12px; border: 2px solid var(--border);
+    border-radius: var(--radius-sm); background: var(--bg); color: var(--text);
+    font-size: 0.9rem; font-weight: 500; outline: none;
+    transition: border-color var(--transition);
+  }
+  .save-current-row input:focus { border-color: var(--accent); }
+  .save-current-row button {
+    padding: 8px 14px; background: var(--success); color: #fff; border: none;
+    border-radius: var(--radius-sm); font-size: 0.85rem; font-weight: 600;
+    cursor: pointer; white-space: nowrap; transition: opacity var(--transition);
+  }
+  .save-current-row button:hover { opacity: 0.85; }
+  .save-current-row button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .saved-list { display: flex; flex-direction: column; gap: 6px; }
+  .saved-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px; background: var(--bg);
+    border-radius: var(--radius-sm); border: 1px solid var(--border);
+    cursor: pointer; transition: all var(--transition);
+  }
+  .saved-item:hover { border-color: var(--accent); }
+  .saved-item .saved-info { flex: 1; min-width: 0; }
+  .saved-item .saved-name { font-size: 0.9rem; font-weight: 600; color: var(--text); }
+  .saved-item .saved-summary {
+    font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .saved-item .saved-del {
+    background: none; border: none; color: var(--text-secondary);
+    cursor: pointer; font-size: 1rem; padding: 2px 4px;
+    border-radius: 4px; transition: all var(--transition); flex-shrink: 0;
+  }
+  .saved-item .saved-del:hover { color: var(--danger); background: rgba(255,59,48,0.1); }
+  .saved-empty { text-align: center; padding: 14px; color: var(--text-secondary); font-size: 0.85rem; }
+
+  @media (max-width: 420px) {
+    .countdown-time { font-size: 3.2rem; }
+    .container { padding: 16px 14px; gap: 12px; }
+    .card { padding: 16px; }
+    .add-row input { font-size: 0.95rem; padding: 8px 2px; }
+    .group-repeat button { width: 22px; height: 22px; }
+  }
+  @media (min-width: 600px) {
+    .container { padding: 40px 20px; }
+    .countdown-time { font-size: 5.5rem; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>인터벌 타이머</h1>
+    <button id="themeToggle" aria-label="테마 전환">&#9790;</button>
+  </header>
+
+  <div class="card countdown-display">
+    <div class="step-indicator" id="stepIndicator">-</div>
+    <div class="countdown-time" id="display">00:00</div>
+    <div class="cycle-count">전체 반복: <span id="cycleCount">0</span>회 완료</div>
+    <div class="step-progress" id="stepProgress"></div>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="edit">구간 편집</button>
+    <button class="tab-btn" data-tab="saved">저장 목록</button>
+  </div>
+
+  <div class="panel active interval-section" id="panelEdit" data-panel="edit">
+    <div class="section-header">
+      <h2>구간 설정</h2>
+      <button class="clear-all-btn" id="clearAllBtn">전체 삭제</button>
+    </div>
+    <div class="item-list" id="itemList">
+      <div class="empty-msg" id="emptyMsg">아래에서 구간을 추가하세요</div>
+    </div>
+
+    <div class="selection-bar" id="selectionBar">
+      <span id="selCount">2개 선택됨</span>
+      <button class="group-btn" id="groupBtn">그룹으로 묶기</button>
+    </div>
+
+    <div class="add-section">
+      <div class="add-name-row">
+        <input type="text" id="addName" placeholder="구간 이름 (선택사항)" maxlength="30">
+      </div>
+      <div class="add-row">
+        <div class="time-field">
+          <input type="number" id="addH" min="0" max="99" value="0" inputmode="numeric" placeholder="0">
+          <span class="field-label">시</span>
+        </div>
+        <div class="time-field">
+          <input type="number" id="addM" min="0" max="59" value="" inputmode="numeric" placeholder="0">
+          <span class="field-label">분</span>
+        </div>
+        <div class="time-field">
+          <input type="number" id="addS" min="0" max="59" value="" inputmode="numeric" placeholder="0">
+          <span class="field-label">초</span>
+        </div>
+        <button class="add-btn" id="addBtn">+ 추가</button>
+      </div>
+    </div>
+
+    <div class="presets-row">
+      <button class="preset-btn" data-seconds="60">1분</button>
+      <button class="preset-btn" data-seconds="180">3분</button>
+      <button class="preset-btn" data-seconds="300">5분</button>
+      <button class="preset-btn" data-seconds="600">10분</button>
+      <button class="preset-btn" data-seconds="900">15분</button>
+      <button class="preset-btn" data-seconds="1500">25분</button>
+    </div>
+
+    <div class="repeat-row">
+      <span class="repeat-label">전체 시퀀스 반복</span>
+      <div class="repeat-controls">
+        <button id="repeatMinus">&minus;</button>
+        <div class="repeat-value" id="repeatDisplay"><span class="inf">&infin;</span></div>
+        <button id="repeatPlus">+</button>
+      </div>
+    </div>
+
+    <div class="save-current-row" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+      <input type="text" id="saveNameInput" placeholder="현재 설정을 저장..." maxlength="40">
+      <button id="saveBtn">저장</button>
+    </div>
+  </div>
+
+  <div class="panel card saved-section" id="panelSaved" data-panel="saved">
+    <h2>저장된 타이머</h2>
+    <div class="saved-list" id="savedList">
+      <div class="saved-empty" id="savedEmpty">저장된 타이머가 없습니다</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-primary" id="startBtn" disabled>시작</button>
+    <button class="btn btn-secondary" id="resetBtn">리셋</button>
+  </div>
+  <div class="status-bar" id="statusBar">구간을 추가하고 시작하세요</div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+  const $ = id => document.getElementById(id);
+
+  // DOM
+  const display = $('display'), cycleEl = $('cycleCount'),
+    stepIndicator = $('stepIndicator'), stepProgress = $('stepProgress'),
+    itemListEl = $('itemList'), emptyMsg = $('emptyMsg'),
+    addName = $('addName'),
+    addH = $('addH'), addM = $('addM'), addS = $('addS'), addBtn = $('addBtn'),
+    startBtn = $('startBtn'), resetBtn = $('resetBtn'),
+    statusBar = $('statusBar'),
+    themeToggle = $('themeToggle'),
+    repeatDisplay = $('repeatDisplay'), repeatMinus = $('repeatMinus'), repeatPlus = $('repeatPlus'),
+    selectionBar = $('selectionBar'), selCount = $('selCount'), groupBtn = $('groupBtn'),
+    saveNameInput = $('saveNameInput'), saveBtn = $('saveBtn'),
+    savedListEl = $('savedList'), savedEmpty = $('savedEmpty'),
+    clearAllBtn = $('clearAllBtn');
+
+  /*
+   * Data model:
+   * items = [
+   *   { type: 'interval', ms: 5000, name: '집중' },
+   *   { type: 'group', children: [{ms: 5000, name:'집중'}, {ms: 10000, name:'휴식'}], repeat: 2 },
+   *   { type: 'interval', ms: 3000, name: '' },
+   * ]
+   */
+  let items = [];
+  let globalRepeat = 0;   // 0 = infinite
+  let state = 'idle';
+  let plan = [];           // flattened execution plan [{ms, itemIdx, label}]
+  let planIdx = 0;
+  let targetTime = 0;
+  let remainingMs = 0;
+  let cycles = 0;
+  let tickRAF = null;
+  let selected = new Set(); // indices of checked top-level items
+
+  // ── Theme ──
+  function applyTheme() {
+    const s = localStorage.getItem('it-theme');
+    let dark;
+    if (s === 'dark') dark = true;
+    else if (s === 'light') dark = false;
+    else dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.classList.toggle('dark', dark);
+    themeToggle.textContent = dark ? '\u2600' : '\u263E';
+  }
+  themeToggle.addEventListener('click', () => {
+    const d = document.documentElement.classList.contains('dark');
+    localStorage.setItem('it-theme', d ? 'light' : 'dark');
+    applyTheme();
+  });
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (!localStorage.getItem('it-theme')) applyTheme();
+  });
+  applyTheme();
+
+  // ── Global repeat ──
+  function updateRepeatUI() {
+    repeatDisplay.innerHTML = globalRepeat === 0
+      ? '<span class="inf">\u221E</span>' : globalRepeat + '\uD68C';
+    repeatMinus.disabled = state !== 'idle';
+    repeatPlus.disabled = state !== 'idle';
+  }
+  repeatPlus.addEventListener('click', () => { if (state==='idle') { globalRepeat++; updateRepeatUI(); save(); } });
+  repeatMinus.addEventListener('click', () => { if (state==='idle' && globalRepeat>0) { globalRepeat--; updateRepeatUI(); save(); } });
+
+  // ── Persist ──
+  function save() {
+    localStorage.setItem('it-items', JSON.stringify(items));
+    localStorage.setItem('it-global-repeat', String(globalRepeat));
+  }
+  function restore() {
+    try {
+      const s = JSON.parse(localStorage.getItem('it-items'));
+      if (s && Array.isArray(s) && s.length > 0) {
+        items = s;
+        render();
+      }
+      const gr = localStorage.getItem('it-global-repeat');
+      if (gr !== null) globalRepeat = Math.max(0, parseInt(gr) || 0);
+      updateRepeatUI();
+    } catch(e) {}
+  }
+
+  // ── Format ──
+  function fmtTime(ms) {
+    const t = Math.max(0, Math.ceil(ms/1000));
+    const h = Math.floor(t/3600), m = Math.floor((t%3600)/60), s = t%60;
+    return h > 0
+      ? String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')
+      : String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+  }
+  function fmtDur(ms) {
+    const t = Math.round(ms/1000);
+    const h = Math.floor(t/3600), m = Math.floor((t%3600)/60), s = t%60;
+    let p = [];
+    if (h) p.push(h+'\uC2DC\uAC04');
+    if (m) p.push(m+'\uBD84');
+    if (s || !p.length) p.push(s+'\uCD08');
+    return p.join(' ');
+  }
+  function setStatus(t, c) { statusBar.innerHTML = c ? '<span class="'+c+'">'+t+'</span>' : t; }
+
+  // ── Build flat plan ──
+  function buildPlan() {
+    const p = [];
+    items.forEach((item, idx) => {
+      if (item.type === 'interval') {
+        p.push({ ms: item.ms, itemIdx: idx, name: item.name || '' });
+      } else if (item.type === 'group') {
+        for (let r = 0; r < item.repeat; r++) {
+          item.children.forEach(ch => {
+            p.push({ ms: ch.ms, itemIdx: idx, name: ch.name || '' });
+          });
+        }
+      }
+    });
+    return p;
+  }
+
+  // ── Selection ──
+  function updateSelectionBar() {
+    if (state !== 'idle') { selectionBar.classList.remove('visible'); return; }
+    const sel = getConsecutiveSelection();
+    if (sel && sel.count >= 2) {
+      selCount.textContent = sel.count + '\uAC1C \uC120\uD0DD\uB428';
+      selectionBar.classList.add('visible');
+    } else {
+      selectionBar.classList.remove('visible');
+    }
+  }
+  function getConsecutiveSelection() {
+    if (selected.size < 2) return null;
+    const sorted = [...selected].sort((a,b) => a-b);
+    // check consecutive
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i] !== sorted[i-1] + 1) return null;
+    }
+    return { start: sorted[0], end: sorted[sorted.length-1], count: sorted.length };
+  }
+
+  groupBtn.addEventListener('click', () => {
+    const sel = getConsecutiveSelection();
+    if (!sel) return;
+    // Collect children from selected items
+    const children = [];
+    for (let i = sel.start; i <= sel.end; i++) {
+      const item = items[i];
+      if (item.type === 'interval') {
+        children.push({ ms: item.ms, name: item.name || '' });
+      } else if (item.type === 'group') {
+        item.children.forEach(c => children.push({ ms: c.ms, name: c.name || '' }));
+      }
+    }
+    // Replace selected range with a group
+    const group = { type: 'group', children: children, repeat: 2 };
+    items.splice(sel.start, sel.count, group);
+    selected.clear();
+    save();
+    render();
+  });
+
+  // ── Render ──
+  function render() {
+    itemListEl.innerHTML = '';
+    if (items.length === 0) {
+      itemListEl.appendChild(emptyMsg);
+      emptyMsg.style.display = '';
+      startBtn.disabled = true;
+      updateIndicator();
+      renderProgress();
+      updateSelectionBar();
+      return;
+    }
+    emptyMsg.style.display = 'none';
+    startBtn.disabled = false;
+
+    const isIdle = state === 'idle';
+    const currentItemIdx = plan.length > 0 && planIdx < plan.length ? plan[planIdx].itemIdx : -1;
+
+    items.forEach((item, i) => {
+      if (item.type === 'interval') {
+        const row = mkIntervalRow(item, i, isIdle, currentItemIdx === i);
+        itemListEl.appendChild(row);
+      } else if (item.type === 'group') {
+        const block = mkGroupBlock(item, i, isIdle, currentItemIdx === i);
+        itemListEl.appendChild(block);
+      }
+    });
+
+    updateIndicator();
+    renderProgress();
+    updateSelectionBar();
+  }
+
+  function mkIntervalRow(item, idx, isIdle, isActive) {
+    const row = document.createElement('div');
+    row.className = 'item-row' + (isActive ? ' is-active' : '');
+
+    if (isIdle) {
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.className = 'item-check';
+      cb.checked = selected.has(idx);
+      cb.addEventListener('change', () => {
+        if (cb.checked) selected.add(idx); else selected.delete(idx);
+        updateSelectionBar();
+      });
+      row.appendChild(cb);
+    }
+
+    const num = document.createElement('div');
+    num.className = 'item-num';
+    num.textContent = idx + 1;
+    row.appendChild(num);
+
+    if (item.name) {
+      const info = document.createElement('div');
+      info.className = 'item-info';
+      const nameEl = document.createElement('div');
+      nameEl.className = 'item-name';
+      nameEl.textContent = item.name;
+      if (isIdle) {
+        nameEl.style.cursor = 'pointer';
+        nameEl.title = '\uD074\uB9AD\uD558\uC5EC \uC774\uB984 \uC218\uC815';
+        nameEl.addEventListener('click', () => {
+          nameEl.style.display = 'none';
+          const inp = document.createElement('input');
+          inp.className = 'item-name-input'; inp.value = item.name;
+          info.insertBefore(inp, timeEl);
+          inp.focus(); inp.select();
+          const commit = () => { item.name = inp.value.trim(); save(); render(); };
+          inp.addEventListener('blur', commit);
+          inp.addEventListener('keydown', e => { if(e.key==='Enter'){e.preventDefault();commit();} });
+        });
+      }
+      info.appendChild(nameEl);
+      const timeEl = document.createElement('div');
+      timeEl.className = 'item-time';
+      timeEl.textContent = fmtDur(item.ms);
+      info.appendChild(timeEl);
+      row.appendChild(info);
+    } else {
+      const time = document.createElement('div');
+      time.className = 'item-time-only';
+      time.textContent = fmtDur(item.ms);
+      if (isIdle) {
+        time.style.cursor = 'pointer';
+        time.title = '\uD074\uB9AD\uD558\uC5EC \uC774\uB984 \uCD94\uAC00';
+        time.addEventListener('click', () => {
+          time.style.display = 'none';
+          const wrap = document.createElement('div');
+          wrap.className = 'item-info';
+          const inp = document.createElement('input');
+          inp.className = 'item-name-input'; inp.placeholder = '\uC774\uB984 \uC785\uB825';
+          wrap.appendChild(inp);
+          const tEl = document.createElement('div');
+          tEl.className = 'item-time'; tEl.textContent = fmtDur(item.ms);
+          wrap.appendChild(tEl);
+          row.insertBefore(wrap, time);
+          inp.focus();
+          const commit = () => { item.name = inp.value.trim(); save(); render(); };
+          inp.addEventListener('blur', commit);
+          inp.addEventListener('keydown', e => { if(e.key==='Enter'){e.preventDefault();commit();} });
+        });
+      }
+      row.appendChild(time);
+    }
+
+    if (isIdle) {
+      const del = document.createElement('button');
+      del.className = 'delete-btn'; del.textContent = '\u00D7'; del.title = '\uC0AD\uC81C';
+      del.addEventListener('click', () => {
+        items.splice(idx, 1);
+        selected.clear();
+        save(); render();
+      });
+      row.appendChild(del);
+    }
+    return row;
+  }
+
+  function mkGroupBlock(item, idx, isIdle, isActive) {
+    const block = document.createElement('div');
+    block.className = 'group-block' + (isActive ? ' is-active' : '');
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'group-header';
+
+    if (isIdle) {
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.className = 'group-check';
+      cb.checked = selected.has(idx);
+      cb.addEventListener('change', () => {
+        if (cb.checked) selected.add(idx); else selected.delete(idx);
+        updateSelectionBar();
+      });
+      header.appendChild(cb);
+    }
+
+    const label = document.createElement('div');
+    label.className = 'group-label';
+    label.textContent = '\uADF8\uB8F9 (' + item.children.length + '\uAC1C \uAD6C\uAC04)';
+    header.appendChild(label);
+
+    // Group repeat
+    const repWrap = document.createElement('div');
+    repWrap.className = 'group-repeat';
+    if (isIdle) {
+      const minB = document.createElement('button');
+      minB.textContent = '\u2212';
+      minB.addEventListener('click', () => {
+        if (item.repeat > 1) { item.repeat--; save(); render(); }
+      });
+      repWrap.appendChild(minB);
+    }
+    const val = document.createElement('div');
+    val.className = 'grp-val';
+    val.textContent = '\u00D7' + item.repeat;
+    repWrap.appendChild(val);
+    if (isIdle) {
+      const plB = document.createElement('button');
+      plB.textContent = '+';
+      plB.addEventListener('click', () => { item.repeat++; save(); render(); });
+      repWrap.appendChild(plB);
+    }
+    header.appendChild(repWrap);
+
+    if (isIdle) {
+      const ub = document.createElement('button');
+      ub.className = 'ungroup-btn'; ub.textContent = '\uD574\uC81C';
+      ub.addEventListener('click', () => {
+        // Replace group with its children as individual intervals
+        const newItems = item.children.map(c => ({ type: 'interval', ms: c.ms, name: c.name || '' }));
+        items.splice(idx, 1, ...newItems);
+        selected.clear();
+        save(); render();
+      });
+      header.appendChild(ub);
+    }
+
+    block.appendChild(header);
+
+    // Children
+    const childWrap = document.createElement('div');
+    childWrap.className = 'group-children';
+    item.children.forEach((ch, ci) => {
+      const row = document.createElement('div');
+      row.className = 'item-row';
+      // Highlight specific child if running
+      if (isActive && state !== 'idle') {
+        const flatInGroup = getCurrentGroupChildIdx(idx);
+        if (flatInGroup === ci) row.classList.add('is-active');
+      }
+      const num = document.createElement('div');
+      num.className = 'item-num'; num.textContent = ci + 1;
+      row.appendChild(num);
+      if (ch.name) {
+        const info = document.createElement('div');
+        info.className = 'item-info';
+        const nameEl = document.createElement('div');
+        nameEl.className = 'item-name'; nameEl.textContent = ch.name;
+        if (isIdle) {
+          nameEl.style.cursor = 'pointer'; nameEl.title = '\uD074\uB9AD\uD558\uC5EC \uC218\uC815';
+          nameEl.addEventListener('click', () => {
+            nameEl.style.display = 'none';
+            const inp = document.createElement('input');
+            inp.className = 'item-name-input'; inp.value = ch.name;
+            info.insertBefore(inp, tEl); inp.focus(); inp.select();
+            const commit = () => { ch.name = inp.value.trim(); save(); render(); };
+            inp.addEventListener('blur', commit);
+            inp.addEventListener('keydown', e => { if(e.key==='Enter'){e.preventDefault();commit();} });
+          });
+        }
+        info.appendChild(nameEl);
+        const tEl = document.createElement('div');
+        tEl.className = 'item-time'; tEl.textContent = fmtDur(ch.ms);
+        info.appendChild(tEl);
+        row.appendChild(info);
+      } else {
+        const time = document.createElement('div');
+        time.className = 'item-time-only'; time.textContent = fmtDur(ch.ms);
+        row.appendChild(time);
+      }
+      if (isIdle) {
+        const del = document.createElement('button');
+        del.className = 'delete-btn'; del.textContent = '\u00D7';
+        del.addEventListener('click', () => {
+          item.children.splice(ci, 1);
+          if (item.children.length === 0) {
+            items.splice(idx, 1);
+          } else if (item.children.length === 1) {
+            items.splice(idx, 1, { type: 'interval', ms: item.children[0].ms, name: item.children[0].name || '' });
+          }
+          selected.clear(); save(); render();
+        });
+        row.appendChild(del);
+      }
+      childWrap.appendChild(row);
+    });
+    block.appendChild(childWrap);
+    return block;
+  }
+
+  function getCurrentGroupChildIdx(groupIdx) {
+    if (plan.length === 0 || planIdx >= plan.length) return -1;
+    // Find which child within this group corresponds to planIdx
+    let flatStart = 0;
+    for (let i = 0; i < groupIdx; i++) {
+      const it = items[i];
+      if (it.type === 'interval') flatStart++;
+      else flatStart += it.children.length * it.repeat;
+    }
+    const group = items[groupIdx];
+    const offset = planIdx - flatStart;
+    if (offset < 0) return -1;
+    const childCount = group.children.length;
+    return offset % childCount;
+  }
+
+  function updateIndicator() {
+    if (items.length === 0) { stepIndicator.textContent = '-'; return; }
+    const p = buildPlan();
+    if (state === 'idle') {
+      stepIndicator.innerHTML = '\uCD1D <span class="hl">' + p.length + '</span>\uB2E8\uACC4';
+    } else if (planIdx < plan.length) {
+      const entry = plan[planIdx];
+      const nameStr = entry.name ? entry.name : fmtDur(entry.ms);
+      stepIndicator.innerHTML = '<span class="hl">' + (planIdx+1) + '</span> / ' + plan.length
+        + ' \u2014 ' + nameStr + (entry.name ? ' (' + fmtDur(entry.ms) + ')' : '');
+    }
+  }
+
+  function renderProgress() {
+    stepProgress.innerHTML = '';
+    const p = state === 'idle' ? buildPlan() : plan;
+    p.forEach((_, i) => {
+      const dot = document.createElement('div');
+      dot.className = 'step-dot';
+      if (state !== 'idle') {
+        if (i < planIdx) dot.classList.add('done');
+        else if (i === planIdx) dot.classList.add('active');
+      }
+      stepProgress.appendChild(dot);
+    });
+  }
+
+  // ── Add ──
+  function addInterval(ms, name) {
+    if (ms <= 0 || state !== 'idle') return;
+    items.push({ type: 'interval', ms: ms, name: name || '' });
+    selected.clear(); save(); render();
+    if (items.length === 1) display.textContent = fmtTime(ms);
+  }
+  function getAddMs() {
+    return ((Math.max(0,parseInt(addH.value)||0))*3600
+      + (Math.max(0,parseInt(addM.value)||0))*60
+      + (Math.max(0,parseInt(addS.value)||0))) * 1000;
+  }
+  addBtn.addEventListener('click', () => {
+    const ms = getAddMs();
+    if (ms <= 0) { setStatus('1\uCD08 \uC774\uC0C1 \uC785\uB825\uD558\uC138\uC694'); return; }
+    addInterval(ms, addName.value.trim());
+    addName.value=''; addH.value='0'; addM.value=''; addS.value=''; addName.focus();
+  });
+  [addName,addH,addM,addS].forEach(el => {
+    el.addEventListener('keydown', e => { if(e.key==='Enter'){e.preventDefault();addBtn.click();} });
+  });
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => addInterval(parseInt(btn.dataset.seconds)*1000));
+  });
+
+  // ── Audio warmup (replaces old alarm sound role) ──
+  let audioCtx = null;
+  function warmUpAudio() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      g.gain.value = 0;
+      osc.connect(g); g.connect(audioCtx.destination);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.05);
+    } catch(e) {}
+  }
+
+  // ── TTS ──
+  function speak(text) {
+    if (!text || !('speechSynthesis' in window)) return;
+    warmUpAudio();
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'ko-KR'; u.rate = 1; u.volume = 0.8;
+    window.speechSynthesis.speak(u);
+  }
+  function announceStep(planEntry) {
+    if (!planEntry) return;
+    const name = planEntry.name;
+    if (name) speak(name);
+  }
+
+  function reqNotif() { if('Notification'in window&&Notification.permission==='default')Notification.requestPermission(); }
+  function sendNotif(msg) {
+    if('Notification'in window&&Notification.permission==='granted')
+      try{new Notification('\uC778\uD130\uBC8C \uD0C0\uC774\uBA38',{body:msg,tag:'interval-timer'});}catch(e){}
+  }
+  function setEndingWarn(on) { document.body.classList.toggle('ending-warn', on); }
+  // ── Wake Lock (화면 꺼짐 방지) ──
+  let wakeLock = null;
+  async function requestWakeLock() {
+    try {
+      if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+    } catch(e) {}
+  }
+  function releaseWakeLock() {
+    if (wakeLock) { wakeLock.release().catch(()=>{}); wakeLock = null; }
+  }
+
+  function vibrate() {
+    if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
+  }
+  function triggerAlarm() {
+    setEndingWarn(false);
+    vibrate();
+    const entry = plan[planIdx];
+    const stepName = entry && entry.name ? entry.name : '';
+    const msg = (stepName ? stepName + ' ' : '') + (planIdx+1)+'/'+plan.length+' \uB2E8\uACC4 \uC644\uB8CC!';
+    sendNotif(msg);
+  }
+
+  // ── Timer ──
+  function tick() {
+    if (state!=='running') return;
+    const now = Date.now();
+    const rem = targetTime - now;
+    if (rem <= 0) {
+      triggerAlarm();
+      planIdx++;
+      if (planIdx >= plan.length) {
+        cycles++; cycleEl.textContent = cycles;
+        if (globalRepeat === 0 || cycles < globalRepeat) {
+          planIdx = 0;
+          targetTime = now + plan[0].ms;
+          display.textContent = fmtTime(plan[0].ms);
+          announceStep(plan[0]);
+        } else {
+          state='idle'; planIdx=0;
+          releaseWakeLock(); document.body.classList.remove('is-running');
+          startBtn.textContent='\uC2DC\uC791';
+          startBtn.classList.remove('btn-pause'); startBtn.classList.add('btn-primary');
+          setInputsEnabled(true);
+          setStatus('\uC644\uB8CC! \uCD1D '+cycles+'\uD68C \uBC18\uBCF5');
+          setEndingWarn(false); render(); display.textContent=fmtTime(0); return;
+        }
+      } else {
+        targetTime = now + plan[planIdx].ms;
+        display.textContent = fmtTime(plan[planIdx].ms);
+        announceStep(plan[planIdx]);
+      }
+      render();
+    } else {
+      display.textContent = fmtTime(rem);
+      setEndingWarn(rem <= 10000);
+      // 타이틀 + 백그라운드 알림 업데이트
+      const entry = plan[planIdx];
+      const label = entry && entry.name ? entry.name : '';
+      document.title = fmtTime(rem) + (label ? ' - ' + label : '') + ' | 인터벌 타이머';
+      if (document.hidden) updateBgNotification(rem, label);
+    }
+    tickRAF = requestAnimationFrame(tick);
+  }
+
+  // ── 백그라운드 알림 ──
+  let bgNotifInterval = null;
+  function updateBgNotification(rem, label) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    // 매 초마다 갱신하면 너무 빈번하므로 5초 간격으로 제한
+    if (bgNotifInterval) return;
+    bgNotifInterval = setTimeout(() => { bgNotifInterval = null; }, 5000);
+    try {
+      new Notification('인터벌 타이머', {
+        body: (label ? label + ' - ' : '') + '남은 시간: ' + fmtTime(rem),
+        tag: 'interval-timer-bg',
+        silent: true,
+        renotify: true
+      });
+    } catch(e) {}
+  }
+
+  function setInputsEnabled(on) {
+    addName.disabled=!on; addH.disabled=!on; addM.disabled=!on; addS.disabled=!on; addBtn.disabled=!on;
+    document.querySelectorAll('.preset-btn').forEach(b=>b.disabled=!on);
+    repeatMinus.disabled=!on; repeatPlus.disabled=!on;
+  }
+  function start() {
+    if(!items.length){setStatus('\uAD6C\uAC04\uC744 \uBA3C\uC800 \uCD94\uAC00\uD558\uC138\uC694');return;}
+    if (state==='paused') {
+      targetTime = Date.now() + remainingMs;
+    } else {
+      plan = buildPlan();
+      if(!plan.length){setStatus('\uAD6C\uAC04\uC744 \uBA3C\uC800 \uCD94\uAC00\uD558\uC138\uC694');return;}
+      planIdx=0; cycles=0; cycleEl.textContent='0';
+      targetTime = Date.now() + plan[0].ms;
+      display.textContent = fmtTime(plan[0].ms);
+      save();
+      announceStep(plan[0]);
+    }
+    reqNotif(); requestWakeLock(); state='running'; remainingMs=0;
+    document.body.classList.add('is-running');
+    startBtn.textContent='\uC77C\uC2DC\uC815\uC9C0';
+    startBtn.classList.remove('btn-primary'); startBtn.classList.add('btn-pause');
+    setInputsEnabled(false); selected.clear();
+    setStatus('\uC2E4\uD589 \uC911','running'); render();
+    tickRAF = requestAnimationFrame(tick);
+  }
+  function pause() {
+    state='paused'; remainingMs=Math.max(0,targetTime-Date.now());
+    cancelAnimationFrame(tickRAF);
+    startBtn.textContent='\uC7AC\uAC1C';
+    startBtn.classList.remove('btn-pause'); startBtn.classList.add('btn-primary');
+    setStatus('\uC77C\uC2DC\uC815\uC9C0','paused');
+  }
+  function reset() {
+    state='idle'; cancelAnimationFrame(tickRAF); setEndingWarn(false);
+    releaseWakeLock(); document.body.classList.remove('is-running');
+    document.title = '인터벌 타이머';
+    planIdx=0; remainingMs=0; cycles=0; cycleEl.textContent='0'; plan=[];
+    startBtn.textContent='\uC2DC\uC791';
+    startBtn.classList.remove('btn-pause'); startBtn.classList.add('btn-primary');
+    startBtn.disabled=!items.length; setInputsEnabled(true); selected.clear(); render();
+    const p = buildPlan();
+    if(p.length) { display.textContent=fmtTime(p[0].ms); setStatus('\uB300\uAE30 \uC911'); }
+    else { display.textContent=fmtTime(0); setStatus('\uAD6C\uAC04\uC744 \uCD94\uAC00\uD558\uACE0 \uC2DC\uC791\uD558\uC138\uC694'); }
+  }
+  startBtn.addEventListener('click', () => { state==='running' ? pause() : start(); });
+  resetBtn.addEventListener('click', reset);
+  document.addEventListener('keydown', e => {
+    if(e.target.tagName==='INPUT')return;
+    if(e.code==='Space'){e.preventDefault();state==='running'?pause():start();}
+    else if(e.code==='KeyR')reset();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      if (state==='running'){cancelAnimationFrame(tickRAF);tickRAF=requestAnimationFrame(tick);}
+      // 포그라운드 복귀 시 백그라운드 알림 제거
+      document.title = state==='running' ? document.title : '인터벌 타이머';
+    }
+  });
+
+  // ── Saved presets ──
+  let savedPresets = [];
+
+  function loadSavedPresets() {
+    try {
+      const s = JSON.parse(localStorage.getItem('it-saved-presets'));
+      if (s && Array.isArray(s)) savedPresets = s;
+    } catch(e) {}
+  }
+  function saveSavedPresets() {
+    localStorage.setItem('it-saved-presets', JSON.stringify(savedPresets));
+  }
+
+  function summarizeItems(arr) {
+    const p = [];
+    arr.forEach(it => {
+      if (it.type === 'interval') {
+        p.push(it.name || fmtDur(it.ms));
+      } else if (it.type === 'group') {
+        const names = it.children.map(c => c.name || fmtDur(c.ms)).join(', ');
+        p.push('[' + names + ']\u00D7' + it.repeat);
+      }
+    });
+    return p.join(' \u2192 ');
+  }
+
+  function renderSaved() {
+    savedListEl.innerHTML = '';
+    if (savedPresets.length === 0) {
+      savedListEl.appendChild(savedEmpty);
+      savedEmpty.style.display = '';
+      return;
+    }
+    savedEmpty.style.display = 'none';
+    savedPresets.forEach((preset, i) => {
+      const row = document.createElement('div');
+      row.className = 'saved-item';
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.saved-del')) return;
+        if (state !== 'idle') return;
+        items = JSON.parse(JSON.stringify(preset.items));
+        globalRepeat = preset.globalRepeat || 0;
+        updateRepeatUI(); save(); render();
+        const p = buildPlan();
+        if (p.length) display.textContent = fmtTime(p[0].ms);
+        setStatus('\u201C' + preset.name + '\u201D \uBD88\uB7EC\uC634');
+        switchTab('edit');
+      });
+
+      const info = document.createElement('div');
+      info.className = 'saved-info';
+      const nameEl = document.createElement('div');
+      nameEl.className = 'saved-name';
+      nameEl.textContent = preset.name;
+      info.appendChild(nameEl);
+      const summary = document.createElement('div');
+      summary.className = 'saved-summary';
+      summary.textContent = summarizeItems(preset.items);
+      info.appendChild(summary);
+      row.appendChild(info);
+
+      const del = document.createElement('button');
+      del.className = 'saved-del'; del.textContent = '\u00D7'; del.title = '\uC0AD\uC81C';
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        savedPresets.splice(i, 1);
+        saveSavedPresets(); renderSaved();
+      });
+      row.appendChild(del);
+      savedListEl.appendChild(row);
+    });
+  }
+
+  saveBtn.addEventListener('click', () => {
+    if (!items.length) { setStatus('\uC800\uC7A5\uD560 \uAD6C\uAC04\uC774 \uC5C6\uC2B5\uB2C8\uB2E4'); return; }
+    const name = saveNameInput.value.trim();
+    if (!name) { setStatus('\uD0C0\uC774\uBA38 \uC774\uB984\uC744 \uC785\uB825\uD558\uC138\uC694'); return; }
+    savedPresets.push({
+      name: name,
+      items: JSON.parse(JSON.stringify(items)),
+      globalRepeat: globalRepeat
+    });
+    saveSavedPresets(); renderSaved();
+    saveNameInput.value = '';
+    setStatus('\u201C' + name + '\u201D \uC800\uC7A5\uB428');
+  });
+  saveNameInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); saveBtn.click(); }
+  });
+
+  // ── Tabs ──
+  function switchTab(tabId) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
+    document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.dataset.panel === tabId));
+  }
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  // ── Clear all ──
+  clearAllBtn.addEventListener('click', () => {
+    if (state !== 'idle') return;
+    if (!items.length) return;
+    items = [];
+    globalRepeat = 0;
+    selected.clear();
+    updateRepeatUI(); save(); render();
+    display.textContent = fmtTime(0);
+    setStatus('\uAD6C\uAC04 \uC124\uC815\uC744 \uBAA8\uB450 \uC0AD\uC81C\uD588\uC2B5\uB2C8\uB2E4');
+  });
+
+  // ── Init ──
+  restore();
+  loadSavedPresets(); renderSaved();
+  const initPlan = buildPlan();
+  if(initPlan.length) { display.textContent=fmtTime(initPlan[0].ms); setStatus('\uB300\uAE30 \uC911'); }
+
+  // ── PWA Service Worker ──
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
