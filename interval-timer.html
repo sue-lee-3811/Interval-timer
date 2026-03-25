@@ -68,8 +68,12 @@
   /* ── Countdown ── */
   .countdown-display { text-align: center; padding: 28px 20px 20px; }
   .countdown-time {
-    font-size: 4.5rem; font-weight: 700; font-variant-numeric: tabular-nums;
+    font-size: 4.5rem; font-weight: 700;
     letter-spacing: -0.02em; line-height: 1; margin-bottom: 10px;
+    font-family: 'Roboto Mono', 'SF Mono', 'Menlo', 'Courier New', monospace;
+  }
+  .countdown-time .colon {
+    display: inline-block; width: 0.4em; text-align: center;
   }
   .step-indicator { font-size: 0.95rem; color: var(--text-secondary); font-weight: 500; margin-bottom: 6px; }
   .step-indicator .hl { color: var(--accent); font-weight: 700; }
@@ -559,7 +563,15 @@
   }
 
   // ── Format ──
+  const C = '<span class="colon">:</span>';
   function fmtTime(ms) {
+    const t = Math.max(0, Math.ceil(ms/1000));
+    const h = Math.floor(t/3600), m = Math.floor((t%3600)/60), s = t%60;
+    return h > 0
+      ? String(h).padStart(2,'0')+C+String(m).padStart(2,'0')+C+String(s).padStart(2,'0')
+      : String(m).padStart(2,'0')+C+String(s).padStart(2,'0');
+  }
+  function fmtTimePlain(ms) {
     const t = Math.max(0, Math.ceil(ms/1000));
     const h = Math.floor(t/3600), m = Math.floor((t%3600)/60), s = t%60;
     return h > 0
@@ -926,7 +938,7 @@
     if (ms <= 0 || state !== 'idle') return;
     items.push({ type: 'interval', ms: ms, name: name || '' });
     selected.clear(); save(); render();
-    if (items.length === 1) display.textContent = fmtTime(ms);
+    if (items.length === 1) display.innerHTML = fmtTime(ms);
   }
   function getAddMs() {
     return ((Math.max(0,parseInt(addH.value)||0))*3600
@@ -1017,11 +1029,11 @@
         if (globalRepeat === 0 || cycles < globalRepeat) {
           planIdx = 0;
           targetTime = now + plan[0].ms;
-          display.textContent = fmtTime(plan[0].ms);
+          display.innerHTML = fmtTime(plan[0].ms);
           announceStep(plan[0]);
         } else {
           state='idle'; planIdx=0;
-          releaseWakeLock(); document.body.classList.remove('is-running');
+          releaseWakeLock(); stopBgInterval(); document.body.classList.remove('is-running');
           startBtn.textContent='\uC2DC\uC791';
           startBtn.classList.remove('btn-pause'); startBtn.classList.add('btn-primary');
           setInputsEnabled(true);
@@ -1030,17 +1042,17 @@
         }
       } else {
         targetTime = now + plan[planIdx].ms;
-        display.textContent = fmtTime(plan[planIdx].ms);
+        display.innerHTML = fmtTime(plan[planIdx].ms);
         announceStep(plan[planIdx]);
       }
       render();
     } else {
-      display.textContent = fmtTime(rem);
+      display.innerHTML = fmtTime(rem);
       setEndingWarn(rem <= 10000);
       // 타이틀 + 백그라운드 알림 업데이트
       const entry = plan[planIdx];
       const label = entry && entry.name ? entry.name : '';
-      document.title = fmtTime(rem) + (label ? ' - ' + label : '') + ' | 인터벌 타이머';
+      document.title = fmtTimePlain(rem) + (label ? ' - ' + label : '') + ' | 인터벌 타이머';
       if (document.hidden) updateBgNotification(rem, label);
     }
     tickRAF = requestAnimationFrame(tick);
@@ -1052,10 +1064,10 @@
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     // 매 초마다 갱신하면 너무 빈번하므로 5초 간격으로 제한
     if (bgNotifInterval) return;
-    bgNotifInterval = setTimeout(() => { bgNotifInterval = null; }, 5000);
+    bgNotifInterval = setTimeout(() => { bgNotifInterval = null; }, 3000);
     try {
       new Notification('인터벌 타이머', {
-        body: (label ? label + ' - ' : '') + '남은 시간: ' + fmtTime(rem),
+        body: (label ? label + ' - ' : '') + '남은 시간: ' + fmtTimePlain(rem),
         tag: 'interval-timer-bg',
         silent: true,
         renotify: true
@@ -1077,7 +1089,7 @@
       if(!plan.length){setStatus('\uAD6C\uAC04\uC744 \uBA3C\uC800 \uCD94\uAC00\uD558\uC138\uC694');return;}
       planIdx=0; cycles=0; cycleEl.textContent='0';
       targetTime = Date.now() + plan[0].ms;
-      display.textContent = fmtTime(plan[0].ms);
+      display.innerHTML = fmtTime(plan[0].ms);
       save();
       announceStep(plan[0]);
     }
@@ -1098,7 +1110,7 @@
   }
   function reset() {
     state='idle'; cancelAnimationFrame(tickRAF); setEndingWarn(false);
-    releaseWakeLock(); document.body.classList.remove('is-running');
+    releaseWakeLock(); stopBgInterval(); document.body.classList.remove('is-running');
     document.title = '인터벌 타이머';
     planIdx=0; remainingMs=0; cycles=0; cycleEl.textContent='0'; plan=[];
     startBtn.textContent='\uC2DC\uC791';
@@ -1115,11 +1127,39 @@
     if(e.code==='Space'){e.preventDefault();state==='running'?pause():start();}
     else if(e.code==='KeyR')reset();
   });
+  // ── 백그라운드 setInterval 백업 (rAF가 멈출 때 대비) ──
+  let bgInterval = null;
+  function startBgInterval() {
+    if (bgInterval) return;
+    bgInterval = setInterval(() => {
+      if (state !== 'running') return;
+      const now = Date.now();
+      const rem = targetTime - now;
+      if (rem <= 0) {
+        // 구간 전환 처리
+        tick();
+      } else if (document.hidden) {
+        // 백그라운드: 알림 갱신
+        const entry = plan[planIdx];
+        const label = entry && entry.name ? entry.name : '';
+        document.title = fmtTimePlain(rem) + (label ? ' - ' + label : '') + ' | 인터벌 타이머';
+        updateBgNotification(rem, label);
+      }
+    }, 1000);
+  }
+  function stopBgInterval() {
+    if (bgInterval) { clearInterval(bgInterval); bgInterval = null; }
+  }
+
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-      if (state==='running'){cancelAnimationFrame(tickRAF);tickRAF=requestAnimationFrame(tick);}
-      // 포그라운드 복귀 시 백그라운드 알림 제거
-      document.title = state==='running' ? document.title : '인터벌 타이머';
+    if (document.hidden) {
+      // 백그라운드 진입: setInterval 시작
+      if (state === 'running') startBgInterval();
+    } else {
+      // 포그라운드 복귀: setInterval 정리, rAF 재시작
+      stopBgInterval();
+      if (state === 'running') { cancelAnimationFrame(tickRAF); tickRAF = requestAnimationFrame(tick); }
+      else document.title = '인터벌 타이머';
     }
   });
 
@@ -1167,7 +1207,7 @@
         globalRepeat = preset.globalRepeat || 0;
         updateRepeatUI(); save(); render();
         const p = buildPlan();
-        if (p.length) display.textContent = fmtTime(p[0].ms);
+        if (p.length) display.innerHTML = fmtTime(p[0].ms);
         setStatus('\u201C' + preset.name + '\u201D \uBD88\uB7EC\uC634');
         switchTab('edit');
       });
@@ -1230,7 +1270,7 @@
     globalRepeat = 0;
     selected.clear();
     updateRepeatUI(); save(); render();
-    display.textContent = fmtTime(0);
+    display.innerHTML = fmtTime(0);
     setStatus('\uAD6C\uAC04 \uC124\uC815\uC744 \uBAA8\uB450 \uC0AD\uC81C\uD588\uC2B5\uB2C8\uB2E4');
   });
 
